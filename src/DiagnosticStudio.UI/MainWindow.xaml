@@ -1,0 +1,937 @@
+<Window x:Class="DiagnosticStudio.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:DiagnosticStudio.UI.Controls"
+        xmlns:converters="clr-namespace:DiagnosticStudio.UI.Converters"
+        mc:Ignorable="d"
+        Title="Diagnostic Studio —— Windows 程序智能诊断与可视化调试平台" 
+        Icon="pack://application:,,,/DiagnosticStudio.UI;component/Assets/bug.png"
+        Height="850" Width="1350"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        Background="#18181C"
+        Foreground="#E2E8F0"
+        AllowDrop="True"
+        PreviewDragOver="Window_PreviewDragOver"
+        Drop="Window_Drop">
+    
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="46" 
+                      ResizeBorderThickness="6" 
+                      CornerRadius="0" 
+                      GlassFrameThickness="0" 
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <converters:IndexToVisibilityConverter x:Key="IndexToVisConverter"/>
+        <converters:IndexToBoolConverter x:Key="IndexToBoolConverter"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisConverter"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
+
+        <Style x:Key="NavTabButtonStyle" TargetType="RadioButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#94A3B8"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="16,12"/>
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#2B2B36"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#2563EB"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#2B2B36"/>
+            <Setter Property="Foreground" Value="#E2E8F0"/>
+            <Setter Property="BorderBrush" Value="#3D3D4E"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="btnBorder" Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}" 
+                                CornerRadius="4" 
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="#3D3D4E"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="#2563EB"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="btnBorder" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 窗口右上角系统控制按钮基础样式 -->
+        <Style x:Key="WindowControlBtnStyle" TargetType="Button">
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="46"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#2D2D3A"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#3D3D4E"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 窗口右上角关闭按钮专属样式 (悬停鲜红高亮) -->
+        <Style x:Key="WindowCloseBtnStyle" TargetType="Button">
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="46"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#DC2626"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#991B1B"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- 暗黑分段 TabItem 样式 (彻底解决白底白字看不清的问题) -->
+        <Style x:Key="SubTabItemStyle" TargetType="TabItem">
+            <Setter Property="Background" Value="#20202A"/>
+            <Setter Property="Foreground" Value="#94A3B8"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="tabBorder" 
+                                Background="{TemplateBinding Background}" 
+                                BorderBrush="#3D3D4E" 
+                                BorderThickness="1,1,1,0" 
+                                CornerRadius="4,4,0,0" 
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter x:Name="contentPresenter" 
+                                              ContentSource="Header" 
+                                              HorizontalAlignment="Center" 
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="tabBorder" Property="Background" Value="#2D2D3D"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="tabBorder" Property="Background" Value="#1D4ED8"/>
+                                <Setter TargetName="tabBorder" Property="BorderBrush" Value="#3B82F6"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 暗黑 DataGrid 表头样式 (沉浸式深黑统一风格) -->
+        <Style x:Key="DarkDataGridHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#1E1E28"/>
+            <Setter Property="Foreground" Value="#94A3B8"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="BorderBrush" Value="#2D2D3A"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="46"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="28"/>
+        </Grid.RowDefinitions>
+
+        <!-- 顶部沉浸式暗黑统一标题栏 (Row 0) -->
+        <Border Grid.Row="0" Background="#1E1E24" BorderBrush="#2D2D3A" BorderThickness="0,0,0,1" Padding="12,0,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <!-- 左侧 Logo 与标题 -->
+                    <ColumnDefinition Width="Auto"/>
+                    <!-- 中间拉伸区域 (拖拽窗口) -->
+                    <ColumnDefinition Width="*"/>
+                    <!-- 顶部快捷操作栏 -->
+                    <ColumnDefinition Width="Auto"/>
+                    <!-- 窗口控制按钮组 -->
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Logo 与标题 (支持拖拽移动窗口) -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="⚡" FontSize="20" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="Diagnostic Studio" FontSize="16" FontWeight="Bold" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+                    <Border Background="#2563EB" CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="C#/C++ 工业诊断平台" FontSize="11" FontWeight="Bold" Foreground="#FFFFFF"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- 顶部快捷操作栏 -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                    <Button Style="{StaticResource ActionButtonStyle}" Command="{Binding OpenDumpCommand}" Margin="4,0" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <TextBlock Text="📂 打开 Dump"/>
+                    </Button>
+                    <Button Style="{StaticResource ActionButtonStyle}" Command="{Binding CaptureLiveSnapshotCommand}" Margin="4,0" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <TextBlock Text="📸 一键热快照"/>
+                    </Button>
+                    <Button Style="{StaticResource ActionButtonStyle}" Command="{Binding CompareDumpsCommand}" Margin="4,0" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <TextBlock Text="⚖️ 双 Dump 对比"/>
+                    </Button>
+                    <Button Style="{StaticResource ActionButtonStyle}" Command="{Binding ExportHtmlCommand}" Margin="4,0" Background="#065F46" BorderBrush="#059669" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <TextBlock Text="📄 导出 HTML 报告"/>
+                    </Button>
+                </StackPanel>
+
+                <!-- 右侧窗口系统控制按钮组 (最小化, 最大化/还原, 关闭) -->
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Stretch">
+                    <!-- 最小化 -->
+                    <Button x:Name="MinimizeButton" Style="{StaticResource WindowControlBtnStyle}" Click="MinimizeButton_Click" ToolTip="最小化" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <TextBlock Text="—" FontSize="12" Foreground="#94A3B8"/>
+                    </Button>
+                    <!-- 最大化 / 还原 -->
+                    <Button x:Name="MaximizeButton" Style="{StaticResource WindowControlBtnStyle}" Click="MaximizeButton_Click" ToolTip="最大化 / 还原" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <TextBlock x:Name="MaximizeButtonIcon" Text="🗖" FontSize="12" Foreground="#94A3B8"/>
+                    </Button>
+                    <!-- 关闭 -->
+                    <Button x:Name="CloseButton" Style="{StaticResource WindowCloseBtnStyle}" Click="CloseButton_Click" ToolTip="关闭" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <TextBlock Text="✕" FontSize="13" Foreground="#94A3B8"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 符号路径配置条 (Row 1) -->
+        <Border Grid.Row="1" Background="#1C1C23" BorderBrush="#2D2D3A" BorderThickness="0,0,0,1" Padding="16,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                    <TextBlock Text="🏷️ 调试符号路径 (PDB):" Foreground="#94A3B8" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <TextBox Grid.Column="1" 
+                         Text="{Binding SymbolPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                         Background="#242430" 
+                         Foreground="#38BDF8" 
+                         BorderBrush="#3D3D4E" 
+                         BorderThickness="1" 
+                         Padding="8,5" 
+                         FontSize="12" 
+                         FontFamily="Consolas" 
+                         VerticalAlignment="Center"
+                         ToolTip="支持分号 ; 拼接多个路径。分析 Dump 时系统会自动将 Dump 所在目录及 Symbols 子目录拼接置顶，末尾保留微软公共符号服务器。"/>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+                    <Button Style="{StaticResource ActionButtonStyle}" Command="{Binding BrowseSymbolDirectoryCommand}" Margin="3,0" ToolTip="选取本地业务程序编译输出的 PDB 目录 (如 bin\Release)">
+                        <TextBlock Text="📁 选择 PDB 目录"/>
+                    </Button>
+                    <Button Style="{StaticResource ActionButtonStyle}" Command="{Binding ResetSymbolPathCommand}" Margin="3,0" ToolTip="恢复默认微软官方符号服务器">
+                        <TextBlock Text="🔄 默认"/>
+                    </Button>
+                    <Button Style="{StaticResource ActionButtonStyle}" Command="{Binding ReanalyzeDumpCommand}" Margin="3,0" Background="#1D4ED8" BorderBrush="#2563EB" IsEnabled="{Binding HasDump}" ToolTip="使用当前最新符号路径重新分析已加载的 Dump">
+                        <TextBlock Text="⚡ 重新分析"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 主体：左侧导航 + 右侧面板 (Row 2) -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 左侧导航选项卡 -->
+            <Border Grid.Column="0" Background="#1B1B22" BorderBrush="#2D2D3A" BorderThickness="0,0,1,0" Padding="12,16">
+                <StackPanel>
+                    <TextBlock Text="工作台导航" Foreground="#64748B" FontSize="11" FontWeight="Bold" Margin="8,0,0,8"/>
+                    
+                    <RadioButton Style="{StaticResource NavTabButtonStyle}" Content="⚡ 诊断总览 (Overview)" IsChecked="{Binding SelectedTabIndex, Converter={StaticResource IndexToBoolConverter}, ConverterParameter=0, Mode=TwoWay}"/>
+                    <RadioButton Style="{StaticResource NavTabButtonStyle}" Content="💥 转储分析 (Dump)" IsChecked="{Binding SelectedTabIndex, Converter={StaticResource IndexToBoolConverter}, ConverterParameter=1, Mode=TwoWay}"/>
+                    <RadioButton Style="{StaticResource NavTabButtonStyle}" Content="💻 源码定位 (Source)" IsChecked="{Binding SelectedTabIndex, Converter={StaticResource IndexToBoolConverter}, ConverterParameter=2, Mode=TwoWay}"/>
+                    <RadioButton Style="{StaticResource NavTabButtonStyle}" Content="📈 进程监控 (Monitor)" IsChecked="{Binding SelectedTabIndex, Converter={StaticResource IndexToBoolConverter}, ConverterParameter=3, Mode=TwoWay}"/>
+                    <RadioButton Style="{StaticResource NavTabButtonStyle}" Content="⚖️ 快照对比 (Diff)" IsChecked="{Binding SelectedTabIndex, Converter={StaticResource IndexToBoolConverter}, ConverterParameter=4, Mode=TwoWay}"/>
+                    <RadioButton Style="{StaticResource NavTabButtonStyle}" Content="📋 系统日志 (Logs)" IsChecked="{Binding SelectedTabIndex, Converter={StaticResource IndexToBoolConverter}, ConverterParameter=5, Mode=TwoWay}"/>
+
+                    <Separator Background="#2D2D3A" Margin="0,16"/>
+
+                    <!-- 快速状态卡片 -->
+                    <Border Background="#242430" CornerRadius="6" Padding="10" Margin="0,4">
+                        <StackPanel>
+                            <TextBlock Text="当前转储状态" Foreground="#94A3B8" FontSize="11"/>
+                            <TextBlock Text="{Binding CurrentDumpReport.FileSizeDisplay, FallbackValue='未加载'}" Foreground="#FFFFFF" FontWeight="Bold" FontSize="14" Margin="0,2,0,0"/>
+                            <TextBlock Text="{Binding CurrentDumpReport.SystemInfo.ArchitectureDisplay, FallbackValue='--'}" Foreground="#38BDF8" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- 右侧多页面内容容器 -->
+            <Grid Grid.Column="1" Background="#141418" Margin="16">
+                
+                <!-- 页面 0: Overview 概览 -->
+                <Grid Visibility="{Binding SelectedTabIndex, Converter={StaticResource IndexToVisConverter}, ConverterParameter=0}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <!-- 顶部 4 个大卡片 -->
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Border Grid.Column="0" Background="#242430" BorderBrush="#EF4444" BorderThickness="1,0,0,0" CornerRadius="6" Padding="16" Margin="0,0,8,0">
+                                    <StackPanel>
+                                        <TextBlock Text="🔴 致命风险 (Critical)" Foreground="#94A3B8" FontSize="12"/>
+                                        <TextBlock Text="{Binding CriticalCount}" Foreground="#EF4444" FontSize="26" FontWeight="Bold" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="1" Background="#242430" BorderBrush="#F97316" BorderThickness="1,0,0,0" CornerRadius="6" Padding="16" Margin="4,0">
+                                    <StackPanel>
+                                        <TextBlock Text="🟠 高风险问题 (High)" Foreground="#94A3B8" FontSize="12"/>
+                                        <TextBlock Text="{Binding HighCount}" Foreground="#F97316" FontSize="26" FontWeight="Bold" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="2" Background="#242430" BorderBrush="#EAB308" BorderThickness="1,0,0,0" CornerRadius="6" Padding="16" Margin="4,0">
+                                    <StackPanel>
+                                        <TextBlock Text="🟡 可疑预警 (Warning)" Foreground="#94A3B8" FontSize="12"/>
+                                        <TextBlock Text="{Binding WarningCount}" Foreground="#EAB308" FontSize="26" FontWeight="Bold" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="3" Background="#242430" BorderBrush="#38BDF8" BorderThickness="1,0,0,0" CornerRadius="6" Padding="16" Margin="8,0,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="📦 加载模块 / 线程" Foreground="#94A3B8" FontSize="12"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                            <TextBlock Text="{Binding ModuleCount}" Foreground="#FFFFFF" FontSize="26" FontWeight="Bold"/>
+                                            <TextBlock Text=" / " Foreground="#64748B" FontSize="22" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding ThreadCount}" Foreground="#FFFFFF" FontSize="26" FontWeight="Bold"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <!-- 异常摘要卡片 -->
+                            <Border Background="#20202A" BorderBrush="#2D2D3A" BorderThickness="1" CornerRadius="6" Padding="16" Margin="0,0,0,16">
+                                <StackPanel>
+                                    <TextBlock Text="💥 崩溃异常摘要 (Exception Summary)" FontWeight="Bold" Foreground="#FFFFFF" FontSize="14" Margin="0,0,0,8"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="异常名称/代码" Foreground="#94A3B8" FontSize="11"/>
+                                            <TextBlock Text="{Binding ExceptionNameDisplay}" Foreground="#EF4444" FontWeight="Bold" FontSize="13" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="崩溃指令地址" Foreground="#94A3B8" FontSize="11"/>
+                                            <TextBlock Text="{Binding ExceptionAddressDisplay}" Foreground="#E2E8F0" FontFamily="Consolas" FontSize="13" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="故障线程 ID" Foreground="#94A3B8" FontSize="11"/>
+                                            <TextBlock Text="{Binding FaultingThreadIdDisplay}" Foreground="#38BDF8" FontWeight="Bold" FontSize="13" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Top Findings 列表 -->
+                            <Border Background="#20202A" BorderBrush="#2D2D3A" BorderThickness="1" CornerRadius="6" Padding="16">
+                                <StackPanel>
+                                    <TextBlock Text="🔍 诊断推导与根因线索 (双击条目直接跳转源码标红/标黄定位)" FontWeight="Bold" Foreground="#FFFFFF" FontSize="14" Margin="0,0,0,12"/>
+                                    <ListBox ItemsSource="{Binding CurrentDumpReport.Findings}" 
+                                             SelectedItem="{Binding SelectedFinding}"
+                                             Background="Transparent" BorderThickness="0"
+                                             MouseDoubleClick="FindingsListBox_MouseDoubleClick">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="#282834" BorderBrush="#3D3D4E" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,4" Cursor="Hand">
+                                                    <StackPanel>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="{Binding LevelBadge}" FontWeight="Bold" Margin="0,0,8,0"/>
+                                                            <TextBlock Text="{Binding Title}" FontWeight="Bold" Foreground="#FFFFFF"/>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Description}" Foreground="#94A3B8" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                                        <TextBlock Text="{Binding SourceFile, StringFormat='📍 源码: {0}'}" Foreground="#38BDF8" FontSize="11" FontFamily="Consolas" Margin="0,4,0,0"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- 页面 1: Dump Analyzer 转储分析 -->
+                <Grid Visibility="{Binding SelectedTabIndex, Converter={StaticResource IndexToVisConverter}, ConverterParameter=1}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="280"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 线程列表 -->
+                    <Border Grid.Column="0" Background="#20202A" BorderBrush="#2D2D3A" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,8,0">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="🧵 线程列表 (Threads)" FontWeight="Bold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
+                            <ListBox ItemsSource="{Binding CurrentDumpReport.Threads}" 
+                                     SelectedItem="{Binding SelectedThread}"
+                                     Background="Transparent" BorderThickness="0">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="4">
+                                            <TextBlock Text="🔴 " Visibility="{Binding IsCrashThread, Converter={StaticResource BoolToVisConverter}}"/>
+                                            <TextBlock Text="{Binding ThreadId, StringFormat='TID {0}'}" FontWeight="Bold" Foreground="#FFFFFF"/>
+                                            <TextBlock Text="{Binding Frames.Count, StringFormat=' ({0} 帧)'}" Foreground="#64748B"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- 调用栈列表 (双击跳转源码) -->
+                    <Border Grid.Column="1" Background="#20202A" BorderBrush="#2D2D3A" BorderThickness="1" CornerRadius="6" Padding="12">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="📜 调用堆栈 (Stack Trace) - 双击任意行定位源码" FontWeight="Bold" Foreground="#FFFFFF"/>
+                                <TextBlock Text=" [🔴 业务崩溃根因行 | 🟡 入口调用行]" Foreground="#94A3B8" FontSize="11" Margin="8,0,0,0"/>
+                            </StackPanel>
+
+                            <DataGrid ItemsSource="{Binding SelectedThread.Frames}" 
+                                      SelectedItem="{Binding SelectedFrame}"
+                                      AutoGenerateColumns="False" 
+                                      IsReadOnly="True"
+                                      Background="Transparent" 
+                                      BorderThickness="0"
+                                      GridLinesVisibility="Horizontal"
+                                      HorizontalGridLinesBrush="#2D2D3A"
+                                      MouseDoubleClick="StackFramesDataGrid_MouseDoubleClick">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="模块" Binding="{Binding ModuleName}" Width="140"/>
+                                    <DataGridTextColumn Header="函数符号" Binding="{Binding FunctionName}" Width="260"/>
+                                    <DataGridTextColumn Header="源文件" Binding="{Binding SourceFile}" Width="*"/>
+                                    <DataGridTextColumn Header="行号" Binding="{Binding LineNumber}" Width="60"/>
+                                    <DataGridTextColumn Header="指令地址" Binding="{Binding InstructionOffset, StringFormat='0x{0:X16}'}" Width="160"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+
+                <!-- 页面 2: Source Viewer 源码定位 -->
+                <Grid Visibility="{Binding SelectedTabIndex, Converter={StaticResource IndexToVisConverter}, ConverterParameter=2}">
+                    <controls:SourceCodeViewer x:Name="SourceViewerControl"/>
+                </Grid>
+
+                <!-- 页面 3: Live Monitor 进程实时监控 (支持PID与进程名搜索) -->
+                <Grid Visibility="{Binding SelectedTabIndex, Converter={StaticResource IndexToVisConverter}, ConverterParameter=3}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="220"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 顶部操作与筛选栏 (自适应响应式弹性布局，右侧控制操作优先停靠，彻底防止按钮被压缩遮挡) -->
+                    <Border Grid.Row="0" Background="#20202A" BorderBrush="#2D2D3A" BorderThickness="1" CornerRadius="6" Padding="12,10" Margin="0,0,0,12">
+                        <DockPanel LastChildFill="True">
+                            <!-- 右侧监控控制按钮组 (Dock=Right 享有最高布局优先级，按钮尺寸不被挤压) -->
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                                <Button Style="{StaticResource ActionButtonStyle}" 
+                                        Command="{Binding StartMonitorCommand}" 
+                                        Background="#166534" BorderBrush="#22C55E" 
+                                        Margin="0,0,6,0" 
+                                        Padding="12,6"
+                                        ToolTip="开始采集目标进程的私有内存、句柄、GDI 等指标">
+                                    <TextBlock Text="▶️ 开始监控"/>
+                                </Button>
+                                <Button Style="{StaticResource ActionButtonStyle}" 
+                                        Command="{Binding StopMonitorCommand}" 
+                                        Margin="0,0,6,0" 
+                                        Padding="12,6"
+                                        ToolTip="暂停当前目标进程的实时指标监控">
+                                    <TextBlock Text="⏸️ 停止监控"/>
+                                </Button>
+                                <Button Style="{StaticResource ActionButtonStyle}" 
+                                        Command="{Binding CaptureLiveSnapshotCommand}" 
+                                        Background="#1E40AF" BorderBrush="#3B82F6" 
+                                        Margin="0,0,6,0"
+                                        Padding="12,6"
+                                        ToolTip="无损抓取目标进程当前内存快照转储至 Snapshots 目录，并自动加载分析">
+                                    <TextBlock Text="📸 抓取快照并分析"/>
+                                </Button>
+                                <Button Style="{StaticResource ActionButtonStyle}" 
+                                        Command="{Binding OpenSnapshotsDirectoryCommand}" 
+                                        Padding="10,6"
+                                        ToolTip="在 Windows 资源管理器中打开存放快照 Dump 文件的 Snapshots 目录">
+                                    <TextBlock Text="📂 快照目录"/>
+                                </Button>
+                            </StackPanel>
+
+                            <!-- 左侧筛选与目标进程选择 (支持流式折行与弹性拉伸) -->
+                            <WrapPanel VerticalAlignment="Center" Orientation="Horizontal">
+                                <!-- 搜索输入框 -->
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,2,12,2">
+                                    <TextBlock Text="🔍 查找进程:" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#94A3B8" Margin="0,0,8,0"/>
+                                    <Grid Width="160">
+                                        <TextBox Text="{Binding ProcessSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                                 Background="#1A1A22" 
+                                                 Foreground="#38BDF8" 
+                                                 BorderBrush="#3D3D4E" 
+                                                 BorderThickness="1" 
+                                                 Padding="6,4,22,4" 
+                                                 FontSize="12" 
+                                                 VerticalAlignment="Center"
+                                                 ToolTip="输入进程名称 (如 CppCrash / devenv) 或进程 PID (如 1234) 实时过滤"/>
+                                        <Button Style="{StaticResource ActionButtonStyle}"
+                                                Command="{Binding ClearProcessSearchCommand}" 
+                                                Content="✕" 
+                                                Width="18" Height="18" 
+                                                Padding="0" 
+                                                HorizontalAlignment="Right" 
+                                                Margin="0,0,3,0" 
+                                                Background="Transparent" 
+                                                BorderThickness="0" 
+                                                Foreground="#64748B" 
+                                                ToolTip="清空搜索条件"/>
+                                    </Grid>
+                                </StackPanel>
+
+                                <!-- 目标进程下拉与刷新 -->
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,2,0,2">
+                                    <TextBlock Text="目标进程:" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#94A3B8" Margin="0,0,8,0"/>
+                                    <ComboBox ItemsSource="{Binding FilteredProcessList}" 
+                                              SelectedItem="{Binding SelectedProcess}" 
+                                              DisplayMemberPath="DisplayName"
+                                              MinWidth="180" MaxWidth="320"
+                                              Margin="0,0,8,0"
+                                              VerticalAlignment="Center"/>
+                                    <Button Style="{StaticResource ActionButtonStyle}" 
+                                            Command="{Binding RefreshProcessListCommand}" 
+                                            Content="🔄 刷新" 
+                                            Padding="8,5"
+                                            ToolTip="刷新系统全部正在运行的进程列表"/>
+                                </StackPanel>
+                            </WrapPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- 中间自绘实时折线图 -->
+                    <Grid Grid.Row="1" Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <controls:MetricLiveChart x:Name="PrivateBytesChart" Grid.Column="0" Margin="0,0,6,0"/>
+                        <controls:MetricLiveChart x:Name="GdiChart" Grid.Column="1" Margin="6,0,0,0"/>
+                    </Grid>
+
+                    <!-- 下方泄漏智能预警日志 -->
+                    <Border Grid.Row="2" Background="#20202A" BorderBrush="#2D2D3A" BorderThickness="1" CornerRadius="6" Padding="12">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="🚨 内存与资源泄漏实时警报 (Leak Trend Alerts)" FontWeight="Bold" Foreground="#FFFFFF" Margin="0,0,0,8"/>
+                            <ListBox ItemsSource="{Binding MonitorAlerts}" Background="Transparent" BorderThickness="0">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#2C2424" BorderBrush="#EF4444" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,4">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Title}" Foreground="#EF4444" FontWeight="Bold"/>
+                                                <TextBlock Text="{Binding Description}" Foreground="#94A3B8" FontSize="12" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+
+                <!-- 页面 4: Dump Diff 快照对比 -->
+                <Grid Visibility="{Binding SelectedTabIndex, Converter={StaticResource IndexToVisConverter}, ConverterParameter=4}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Row 0: 顶部操作与文件路径 -->
+                    <Border Grid.Row="0" Background="#20202A" BorderBrush="#2D2D3A" BorderThickness="1" CornerRadius="6" Padding="12,10" Margin="0,0,0,10">
+                        <DockPanel LastChildFill="True">
+                            <Button DockPanel.Dock="Left" Style="{StaticResource ActionButtonStyle}" Command="{Binding CompareDumpsCommand}" Content="⚖️ 重新选择并对比两个 Dump 文件" Padding="12,6"/>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                                <TextBlock Text="{Binding DiffResult.DumpPathA, StringFormat='基线 A: {0}'}" Foreground="#94A3B8" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <TextBlock Text="{Binding DiffResult.DumpPathB, StringFormat='对比 B: {0}'}" Foreground="#38BDF8" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Row 1: 疑似代码泄漏定位横幅 (突出展示责任代码与一键源码跳转) -->
+                    <Border Grid.Row="1" Background="#261A1A" BorderBrush="#EF4444" BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,0,0,10"
+                            Visibility="{Binding DiffResult.HasPrimarySuspect, Converter={StaticResource BoolToVisConverter}}">
+                        <DockPanel LastChildFill="True">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource ActionButtonStyle}" 
+                                    Command="{Binding NavigateToPrimarySuspectCommand}" 
+                                    Background="#B91C1C" BorderBrush="#EF4444" 
+                                    Padding="14,8" Margin="12,0,0,0"
+                                    VerticalAlignment="Center"
+                                    ToolTip="直接在源码浏览器中定位此行代码并高亮风险">
+                                <TextBlock Text="⚡ 在源码编辑器中定位"/>
+                            </Button>
+                            <StackPanel VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <Border Background="#EF4444" CornerRadius="3" Padding="6,2" Margin="0,0,8,0">
+                                        <TextBlock Text="🎯 疑似内存泄漏责任点" Foreground="#FFFFFF" FontWeight="Bold" FontSize="11"/>
+                                    </Border>
+                                    <TextBlock Text="{Binding DiffResult.PrimarySuspectDisplay}" Foreground="#FFFFFF" FontWeight="Bold" FontSize="13" FontFamily="Consolas"/>
+                                </StackPanel>
+                                <TextBlock Foreground="#CBD5E1" FontSize="11" TextWrapping="Wrap">
+                                    <Run Text="责任线程: TID "/><Run Text="{Binding DiffResult.PrimarySuspect.ThreadId, Mode=OneWay, FallbackValue='0'}" FontWeight="Bold" Foreground="#38BDF8"/><Run Text=" ("/><Run Text="{Binding DiffResult.PrimarySuspect.ThreadRole, Mode=OneWay}"/><Run Text=")  |  诊断说明: "/><Run Text="{Binding DiffResult.PrimarySuspectDetail, Mode=OneWay}"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Row 2: 核心对比指标卡片组 (转储体积净增、线程变动、模块变动) -->
+                    <Grid Grid.Row="2" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- 卡片 1: 转储体积与堆内存物理净增量 -->
+                        <Border Grid.Column="0" Background="#20202A" BorderBrush="#EF4444" BorderThickness="1,0,0,0" CornerRadius="6" Padding="14,10" Margin="0,0,6,0">
+                            <StackPanel>
+                                <TextBlock Text="📦 转储体积与私有堆物理净增 (Delta)" Foreground="#94A3B8" FontSize="11"/>
+                                <TextBlock Text="{Binding DiffResult.DeltaFileSizeDisplay, FallbackValue='+0 B'}" Foreground="#EF4444" FontSize="22" FontWeight="Bold" Margin="0,2,0,0"/>
+                                <TextBlock Foreground="#64748B" FontSize="11" Margin="0,2,0,0">
+                                    <Run Text="基线: "/><Run Text="{Binding DiffResult.FileSizeADisplay, Mode=OneWay, FallbackValue='0 B'}"/><Run Text="  →  当前: "/><Run Text="{Binding DiffResult.FileSizeBDisplay, Mode=OneWay, FallbackValue='0 B'}"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 卡片 2: 活跃线程数量变动 -->
+                        <Border Grid.Column="1" Background="#20202A" BorderBrush="#38BDF8" BorderThickness="1,0,0,0" CornerRadius="6" Padding="14,10" Margin="3,0">
+                            <StackPanel>
+                                <TextBlock Text="🧵 活跃线程数净增量 (Threads Delta)" Foreground="#94A3B8" FontSize="11"/>
+                                <TextBlock Text="{Binding DiffResult.DeltaThreadDisplay, FallbackValue='0'}" Foreground="#38BDF8" FontSize="22" FontWeight="Bold" Margin="0,2,0,0"/>
+                                <TextBlock Foreground="#64748B" FontSize="11" Margin="0,2,0,0">
+                                    <Run Text="基线: "/><Run Text="{Binding DiffResult.ThreadCountA, Mode=OneWay, FallbackValue='0'}"/><Run Text=" 条  →  当前: "/><Run Text="{Binding DiffResult.ThreadCountB, Mode=OneWay, FallbackValue='0'}"/><Run Text=" 条"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 卡片 3: 模块载入与卸载状态 -->
+                        <Border Grid.Column="2" Background="#20202A" BorderBrush="#10B981" BorderThickness="1,0,0,0" CornerRadius="6" Padding="14,10" Margin="6,0,0,0">
+                            <StackPanel>
+                                <TextBlock Text="📦 动态链接库总数 (Modules)" Foreground="#94A3B8" FontSize="11"/>
+                                <TextBlock Text="{Binding DiffResult.ModuleCountB, FallbackValue='0'}" Foreground="#10B981" FontSize="22" FontWeight="Bold" Margin="0,2,0,0"/>
+                                <TextBlock Foreground="#64748B" FontSize="11" Margin="0,2,0,0">
+                                    <Run Text="模块净增: "/><Run Text="{Binding DiffResult.DeltaModuleDisplay, Mode=OneWay, FallbackValue='0'}"/><Run Text=" 个 (新载入 DLL)"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- Row 3: 核心技术解释横幅 (彻底杜绝理解偏差) -->
+                    <Border Grid.Row="3" Background="#1E293B" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="0,0,0,10">
+                        <TextBlock Foreground="#93C5FD" FontSize="11" TextWrapping="Wrap">
+                            <Run Text="💡 原理提示：" FontWeight="Bold"/>
+                            <Run Text="PE 模块跨度为编译器链接固定值；真正发生增长的内存请查阅【堆与内存段增量明细】Tab；代码责任点已由分析引擎自动扫描定位。"/>
+                        </TextBlock>
+                    </Border>
+
+                    <!-- Row 4: 模块列表、堆增量与线程变动 TabControl -->
+                    <Border Grid.Row="4" Background="#20202A" BorderBrush="#2D2D3A" BorderThickness="1" CornerRadius="6" Padding="12">
+                        <TabControl Background="Transparent" BorderThickness="0">
+                            <!-- Tab 1: 差分智能推导与代码定位 (Insights & Findings) -->
+                            <TabItem Header="🔍 差分智能推导与代码定位 (Diagnostic Insights)" Style="{StaticResource SubTabItemStyle}">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
+                                    <ListBox ItemsSource="{Binding DiffResult.DiffFindings}" 
+                                             SelectedItem="{Binding SelectedFinding}"
+                                             Background="Transparent" BorderThickness="0"
+                                             MouseDoubleClick="FindingsListBox_MouseDoubleClick">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="#282834" BorderBrush="#3D3D4E" BorderThickness="1" CornerRadius="6" Padding="14" Margin="0,4" Cursor="Hand">
+                                                    <StackPanel>
+                                                        <StackPanel Orientation="Horizontal">
+                                                             <TextBlock Text="{Binding LevelBadge}" FontWeight="Bold" Margin="0,0,8,0"/>
+                                                             <TextBlock Text="{Binding Title}" FontWeight="Bold" Foreground="#FFFFFF" FontSize="13"/>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Description}" Foreground="#CBD5E1" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap" LineHeight="18"/>
+
+                                                        <!-- 证据链 (Evidence) -->
+                                                        <ItemsControl ItemsSource="{Binding Evidence}" Margin="0,6,0,0">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <TextBlock Text="{Binding StringFormat='📊 证据: {0}'}" Foreground="#94A3B8" FontSize="11" FontFamily="Consolas" Margin="0,2"/>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+
+                                                        <!-- 诊断建议 (Recommendations) -->
+                                                        <ItemsControl ItemsSource="{Binding Recommendations}" Margin="0,6,0,0">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <TextBlock Text="{Binding StringFormat='💡 建议: {0}'}" Foreground="#38BDF8" FontSize="11" Margin="0,2"/>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+
+                                                        <!-- 源码跳转线索 (若有) -->
+                                                        <TextBlock Text="{Binding CodeLocationDisplay, Mode=OneWay, StringFormat='📍 关联代码: {0}'}" 
+                                                                   Foreground="#F59E0B" FontSize="11" FontWeight="Bold" FontFamily="Consolas" Margin="0,6,0,0"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </ScrollViewer>
+                            </TabItem>
+
+                            <!-- Tab 2: 堆与内存段增量明细 (Top Heap & Memory Growths) -->
+                            <TabItem Header="📈 堆与内存段增量明细 (Top Growth)" Style="{StaticResource SubTabItemStyle}">
+                                <Grid Margin="0,8,0,0">
+                                    <!-- 若为 .NET 托管程序展示 GC Heap 类型增长排行 -->
+                                    <DockPanel Visibility="{Binding DiffResult.IsDotNetProcess, Converter={StaticResource BoolToVisConverter}}">
+                                        <Border DockPanel.Dock="Top" Background="#1E293B" CornerRadius="4" Padding="10,6" Margin="0,0,0,8">
+                                            <TextBlock Text="📊 目标程序运行在 .NET 托管环境下，下方展示 GC 堆中增长最显著的对象类型排行榜 (按增量体积降序排列)：" Foreground="#93C5FD" FontSize="11"/>
+                                        </Border>
+                                        <DataGrid ItemsSource="{Binding DiffResult.TopManagedGrowths}" ColumnHeaderStyle="{StaticResource DarkDataGridHeaderStyle}" 
+                                                  AutoGenerateColumns="False" 
+                                                  IsReadOnly="True" 
+                                                  Background="Transparent" 
+                                                  BorderThickness="0" 
+                                                  GridLinesVisibility="Horizontal" 
+                                                  HorizontalGridLinesBrush="#2D2D3A">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="对象类型名称" Binding="{Binding TypeName}" Width="280"/>
+                                                <DataGridTextColumn Header="堆体积净增 (Delta)" Binding="{Binding DeltaSizeDisplay}" Width="150"/>
+                                                <DataGridTextColumn Header="实例数净增 (ΔCount)" Binding="{Binding DeltaCountDisplay}" Width="140"/>
+                                                <DataGridTextColumn Header="当前大小 (Dump B)" Binding="{Binding SizeBDisplay}" Width="140"/>
+                                                <DataGridTextColumn Header="基线大小 (Dump A)" Binding="{Binding SizeADisplay}" Width="140"/>
+                                                <DataGridTextColumn Header="类别推导" Binding="{Binding Category}" Width="130"/>
+                                                <DataGridTextColumn Header="疑似持有根/线索" Binding="{Binding SuspectRootReason}" Width="*"/>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </DockPanel>
+
+                                    <!-- 若为 Native C++ 程序展示原生提交内存段与堆块增长排行 -->
+                                    <DockPanel Visibility="{Binding DiffResult.IsDotNetProcess, Converter={StaticResource InverseBoolToVisConverter}}">
+                                        <Border DockPanel.Dock="Top" Background="#1E293B" CornerRadius="4" Padding="10,6" Margin="0,0,0,8">
+                                            <TextBlock Text="🧱 目标程序为 Native C/C++ 原生程序，下方展示操作系统私有提交堆 (Private Commit Segments) 增长最显著的内存段分布：" Foreground="#93C5FD" FontSize="11"/>
+                                        </Border>
+                                        <DataGrid ItemsSource="{Binding DiffResult.TopNativeGrowths}" ColumnHeaderStyle="{StaticResource DarkDataGridHeaderStyle}" 
+                                                  AutoGenerateColumns="False" 
+                                                  IsReadOnly="True" 
+                                                  Background="Transparent" 
+                                                  BorderThickness="0" 
+                                                  GridLinesVisibility="Horizontal" 
+                                                  HorizontalGridLinesBrush="#2D2D3A">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="虚拟内存基地址" Binding="{Binding BaseAddressHex}" Width="180"/>
+                                                <DataGridTextColumn Header="物理净增 (Delta)" Binding="{Binding DeltaSizeDisplay}" Width="140"/>
+                                                <DataGridTextColumn Header="变动状态" Binding="{Binding GrowthStatus}" Width="110"/>
+                                                <DataGridTextColumn Header="当前大小 (Dump B)" Binding="{Binding SizeBDisplay}" Width="140"/>
+                                                <DataGridTextColumn Header="基线大小 (Dump A)" Binding="{Binding SizeADisplay}" Width="140"/>
+                                                <DataGridTextColumn Header="保护属性" Binding="{Binding ProtectDescription}" Width="130"/>
+                                                <DataGridTextColumn Header="内存类型" Binding="{Binding TypeDescription}" Width="180"/>
+                                                <DataGridTextColumn Header="推导用途" Binding="{Binding SuspectCategory}" Width="180"/>
+                                                <DataGridTextColumn Header="关联线程/模块" Binding="{Binding RelatedOwner}" Width="*"/>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </DockPanel>
+                                </Grid>
+                            </TabItem>
+
+                            <!-- Tab 3: 线程变动 Tab -->
+                            <TabItem Header="🧵 线程变动明细 (Thread Changes)" Style="{StaticResource SubTabItemStyle}">
+                                <DataGrid ItemsSource="{Binding DiffResult.ThreadChanges}" ColumnHeaderStyle="{StaticResource DarkDataGridHeaderStyle}" 
+                                          AutoGenerateColumns="False" 
+                                          IsReadOnly="True" 
+                                          Background="Transparent" 
+                                          BorderThickness="0" 
+                                          GridLinesVisibility="Horizontal" 
+                                          HorizontalGridLinesBrush="#2D2D3A" 
+                                          Margin="0,8,0,0">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="线程状态" Binding="{Binding Status}" Width="200"/>
+                                        <DataGridTextColumn Header="线程 ID (TID)" Binding="{Binding ThreadId, StringFormat='TID {0}'}" Width="140"/>
+                                        <DataGridTextColumn Header="顶层调用栈摘要" Binding="{Binding TopFrame}" Width="*"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </TabItem>
+
+                            <!-- Tab 4: 模块列表 Tab -->
+                            <TabItem Header="📦 PE 模块列表 (Modules)" Style="{StaticResource SubTabItemStyle}">
+                                <DataGrid ItemsSource="{Binding DiffResult.TopModuleGrowths}" ColumnHeaderStyle="{StaticResource DarkDataGridHeaderStyle}" 
+                                          AutoGenerateColumns="False" 
+                                          IsReadOnly="True" 
+                                          Background="Transparent" 
+                                          BorderThickness="0" 
+                                          GridLinesVisibility="Horizontal" 
+                                          HorizontalGridLinesBrush="#2D2D3A" 
+                                          Margin="0,8,0,0">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="100"/>
+                                        <DataGridTextColumn Header="模块名称" Binding="{Binding ModuleName}" Width="220"/>
+                                        <DataGridTextColumn Header="基线 PE 跨度 (Dump A)" Binding="{Binding SizeADisplay}" Width="180"/>
+                                        <DataGridTextColumn Header="当前 PE 跨度 (Dump B)" Binding="{Binding SizeBDisplay}" Width="180"/>
+                                        <DataGridTextColumn Header="PE 映像差值 (Delta)" Binding="{Binding DeltaDisplay}" Width="160"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </TabItem>
+                        </TabControl>
+                    </Border>
+                </Grid>
+
+                <!-- 页面 5: Logs 系统日志 与 中间文件管理 -->
+                <Grid Visibility="{Binding SelectedTabIndex, Converter={StaticResource IndexToVisConverter}, ConverterParameter=5}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 顶部工作区中间文件管理面板 -->
+                    <Border Grid.Row="0" Background="#20202A" BorderBrush="#2D2D3A" BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,0,0,12">
+                        <DockPanel LastChildFill="True">
+                            <!-- 右侧清理与操作按钮组 -->
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                                <Button Style="{StaticResource ActionButtonStyle}" 
+                                        Command="{Binding RefreshStorageSummaryCommand}" 
+                                        Content="🔄 刷新占用" 
+                                        Margin="0,0,8,0" 
+                                        Padding="10,6"
+                                        ToolTip="重新扫描工作区数据目录下的快照、日志与临时报告大小"/>
+                                <Button Style="{StaticResource ActionButtonStyle}" 
+                                        Command="{Binding OpenDataDirectoryCommand}" 
+                                        Content="📂 打开数据目录" 
+                                        Margin="0,0,8,0" 
+                                        Padding="10,6"
+                                        ToolTip="在 Windows 资源管理器中打开 DiagnosticsData 工作区存储目录"/>
+                                <Button Style="{StaticResource ActionButtonStyle}" 
+                                        Command="{Binding CleanIntermediateFilesCommand}" 
+                                        Content="🧹 清理中间文件" 
+                                        Background="#991B1B" BorderBrush="#DC2626" 
+                                        Padding="12,6"
+                                        ToolTip="安全清理历史快照 Dump、历史运行日志与临时报告，释放磁盘空间"/>
+                            </StackPanel>
+
+                            <!-- 左侧存储信息展示 -->
+                            <StackPanel VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                    <TextBlock Text="📁 工作区存储目录:" Foreground="#94A3B8" FontWeight="SemiBold" FontSize="12" Margin="0,0,6,0"/>
+                                    <TextBlock Text="{Binding StorageDirectoryDisplay}" Foreground="#38BDF8" FontFamily="Consolas" FontSize="12"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding StorageSummaryDisplay}" Foreground="#E2E8F0" FontSize="12" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- 下方实时日志控制台 -->
+                    <Border Grid.Row="1" Background="#1A1A22" BorderBrush="#2D2D3A" BorderThickness="1" CornerRadius="6" Padding="12">
+                        <ListBox ItemsSource="{Binding LogConsoleLines}" 
+                                 Background="Transparent" 
+                                 BorderThickness="0" 
+                                 FontFamily="Consolas" 
+                                 FontSize="12" 
+                                 Foreground="#38BDF8"/>
+                    </Border>
+                </Grid>
+
+            </Grid>
+        </Grid>
+
+        <!-- 底部状态栏 (Row 3) -->
+        <Border Grid.Row="3" Background="#1E1E24" BorderBrush="#2D2D3A" BorderThickness="0,1,0,0" Padding="12,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" Foreground="#94A3B8" FontSize="11" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="Diagnostic Studio v1.1.0 | Allman Style Architecture" Foreground="#64748B" FontSize="11" VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

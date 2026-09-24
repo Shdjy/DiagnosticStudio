@@ -1,0 +1,64 @@
+# Visual Studio / .NET
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.dbmdl
+*.opendb
+
+# Dump 内存转储大文件（禁止提交至远程仓库，解除 GitHub 大文件限制）
+*.dmp
+*.mdmp
+[Dd]umps/
+**/[Dd]umps/
+
+# 测试工程与测试代码（本地保留，取消纳入远程仓库版本控制）
+tests/
+samples/
+
+# CMake & C++ Build
+src/DiagnosticStudio.Native/build/*
+!src/DiagnosticStudio.Native/build/Release/
+!src/DiagnosticStudio.Native/build/Release/DiagnosticNative.dll
+!src/DiagnosticStudio.Native/build/Release/DiagnosticNative.lib
+
+CMakeFiles/
+CMakeCache.txt
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+*.dir/
+*.tlog
+*.log
+*.ilk
+*.pdb
+*.idb
+*.exp
+*.recipe
+*.vcxproj*
+
+# 临时测试与排查脚本
+temp_*
+test_*.cs
+*.tmp
+
+# VS Code / JetBrains / IDE
+.vscode/
+.idea/
+.vsidx/
+
+# OS Generated
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/

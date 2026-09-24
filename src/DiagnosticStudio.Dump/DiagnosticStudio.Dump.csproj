@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\DiagnosticStudio.Core\DiagnosticStudio.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\DiagnosticStudio.Native\build\Release\DiagnosticNative.dll" Condition="Exists('..\DiagnosticStudio.Native\build\Release\DiagnosticNative.dll')">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>

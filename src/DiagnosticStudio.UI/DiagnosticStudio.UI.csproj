@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationTitle>Diagnostic Studio - 智能程序诊断与调试平台</ApplicationTitle>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
+    <Resource Include="Assets\bug.png" />
+    <None Include="Assets\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DiagnosticStudio.Core\DiagnosticStudio.Core.csproj" />
+    <ProjectReference Include="..\DiagnosticStudio.Dump\DiagnosticStudio.Dump.csproj" />
+    <ProjectReference Include="..\DiagnosticStudio.Memory\DiagnosticStudio.Memory.csproj" />
+    <ProjectReference Include="..\DiagnosticStudio.Monitor\DiagnosticStudio.Monitor.csproj" />
+  </ItemGroup>
+
+  <!-- 自动复制 C++ 编译生成的 DiagnosticNative.dll 到输出目录 -->
+  <ItemGroup>
+    <None Include="..\DiagnosticStudio.Native\build\Release\DiagnosticNative.dll" Condition="Exists('..\DiagnosticStudio.Native\build\Release\DiagnosticNative.dll')">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Link>DiagnosticNative.dll</Link>
+    </None>
+  </ItemGroup>
+
+</Project>
