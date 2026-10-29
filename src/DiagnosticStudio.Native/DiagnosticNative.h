@@ -92,4 +92,5 @@ extern "C"
     DIAG_API int32_t GetDumpThreadStackTrace(void* session, uint32_t threadId, int32_t maxFrames, NativeStackFrameInfo* outFrames, int32_t* outActualFrames);
     DIAG_API int32_t ResolveAddressSymbol(void* session, uint64_t address, NativeSymbolResult* outSymbol);
     DIAG_API int32_t CaptureProcessLiveDump(uint32_t processId, const wchar_t* dumpFilePath, int32_t dumpType);
+    DIAG_API int32_t IsDumpHeuristicallyRecovered(void* session, int32_t* outIsRecovered);
 }

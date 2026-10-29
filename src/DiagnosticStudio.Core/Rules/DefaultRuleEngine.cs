@@ -26,6 +26,7 @@ namespace DiagnosticStudio.Core.Rules
             RegisterRule(new AssertOrBreakpointRule());
             RegisterRule(new HangOrDeadlockRule());
             RegisterRule(new LiveSnapshotMemoryLeakRule());
+            RegisterRule(new CorruptedDumpRecoveryRule());
             RegisterRule(new GeneralCrashFallbackRule());
         }
 

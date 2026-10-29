@@ -1,4 +1,4 @@
-#include "DiagnosticNative.h"
+﻿#include "DiagnosticNative.h"
 #include <DbgHelp.h>
 #include <vector>
 #include <string>
@@ -40,6 +40,9 @@ namespace
         uint64_t ActiveStackStart = 0;
         uint64_t ActiveStackSize = 0;
         const uint8_t* ActiveStackData = nullptr;
+
+        // 是否通过启发式引擎成功进行了容错修复与恢复
+        bool IsHeuristicallyRecovered = false;
     };
 
     // 校验 RVA 相对虚拟地址是否在映射文件合法范围内
@@ -370,6 +373,243 @@ namespace
 extern "C"
 {
     // 打开并初始化 Dump 分析会话
+    // 启发式转储流重建器: 针对由于进程被外部强杀、看门狗超时中断等导致流目录索引未回写(全零)的截断转储文件，基于底层物理特征自愈恢复关键流
+    static void TryHeuristicRecoverDump(DumpSessionInternal* pSession)
+    {
+        if (pSession == nullptr || pSession->BaseAddress == nullptr || pSession->FileSize < sizeof(MINIDUMP_HEADER))
+        {
+            return;
+        }
+
+        const auto pBase = reinterpret_cast<const uint8_t*>(pSession->BaseAddress);
+        const auto fileSize = pSession->FileSize;
+        bool recoveredAnything = false;
+
+        // 1. 启发式恢复 SystemInfo
+        if (!pSession->HasSystemInfo)
+        {
+            const uint64_t candidateOffsets[] = { 0xF8, 0x100, 0x120, 0x140 };
+            for (const auto offset : candidateOffsets)
+            {
+                if (IsValidRva(offset, sizeof(MINIDUMP_SYSTEM_INFO), fileSize))
+                {
+                    const auto pSys = reinterpret_cast<const MINIDUMP_SYSTEM_INFO*>(pBase + offset);
+                    if ((pSys->ProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ||
+                         pSys->ProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL ||
+                         pSys->ProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM ||
+                         pSys->ProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64) &&
+                        (pSys->PlatformId == VER_PLATFORM_WIN32_NT || pSys->PlatformId == 2) &&
+                        pSys->MajorVersion >= 5 && pSys->MajorVersion <= 20)
+                    {
+                        SafeReadMemory(pSys, &pSession->SystemInfo, sizeof(MINIDUMP_SYSTEM_INFO));
+                        pSession->HasSystemInfo = true;
+                        recoveredAnything = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 2. 启发式恢复 ExceptionStream (扫描常见的致命崩溃码)
+        if (!pSession->HasException)
+        {
+            const uint64_t scanLimit = (fileSize > sizeof(MINIDUMP_EXCEPTION_STREAM)) 
+                ? std::min<uint64_t>(fileSize - sizeof(MINIDUMP_EXCEPTION_STREAM), 4 * 1024 * 1024) 
+                : 0;
+            for (uint64_t offset = 0xF8; offset < scanLimit; offset += 4)
+            {
+                const auto pExp = reinterpret_cast<const MINIDUMP_EXCEPTION_STREAM*>(pBase + offset);
+                const uint32_t code = pExp->ExceptionRecord.ExceptionCode;
+                const uint32_t numParams = pExp->ExceptionRecord.NumberParameters;
+                const uint32_t tid = pExp->ThreadId;
+
+                const bool isSeverityFatal = (code >= 0x80000000 && code <= 0xE0FFFFFF);
+                if (isSeverityFatal && tid > 0 && tid < 1000000 && numParams <= 15 && pExp->__alignment == 0)
+                {
+                    SafeReadMemory(pExp, &pSession->ExceptionStream, sizeof(MINIDUMP_EXCEPTION_STREAM));
+                    pSession->HasException = true;
+                    recoveredAnything = true;
+                    break;
+                }
+            }
+        }
+
+        // 3. 启发式恢复 ThreadListStream
+        if (pSession->Threads.empty())
+        {
+            const uint64_t scanLimit = (fileSize > sizeof(MINIDUMP_THREAD) * 2)
+                ? std::min<uint64_t>(fileSize - sizeof(MINIDUMP_THREAD) * 2, 8 * 1024 * 1024)
+                : 0;
+            for (uint64_t offset = 0x200; offset < scanLimit; offset += 4)
+            {
+                const auto pThread0 = reinterpret_cast<const MINIDUMP_THREAD*>(pBase + offset);
+                const bool isContextSizeValid = (pThread0->ThreadContext.DataSize == sizeof(CONTEXT) || 
+                                                 pThread0->ThreadContext.DataSize == 1232 || 
+                                                 pThread0->ThreadContext.DataSize == 716);
+                if (isContextSizeValid && pThread0->ThreadId > 0 && pThread0->ThreadId < 1000000 &&
+                    pThread0->Stack.Memory.DataSize > 0 && pThread0->Stack.Memory.DataSize < 20 * 1024 * 1024 &&
+                    pThread0->ThreadContext.Rva > 0 && pThread0->ThreadContext.Rva < fileSize)
+                {
+                    uint32_t threadCount = 0;
+                    bool hasExplicitCount = false;
+                    if (offset >= 4)
+                    {
+                        const uint32_t candidateCount = *reinterpret_cast<const uint32_t*>(pBase + offset - 4);
+                        if (candidateCount >= 1 && candidateCount <= 500)
+                        {
+                            threadCount = candidateCount;
+                            hasExplicitCount = true;
+                        }
+                    }
+
+                    if (!hasExplicitCount)
+                    {
+                        uint64_t curr = offset;
+                        while (curr + sizeof(MINIDUMP_THREAD) <= fileSize && threadCount < 500)
+                        {
+                            const auto pT = reinterpret_cast<const MINIDUMP_THREAD*>(pBase + curr);
+                            if (pT->ThreadId > 0 && pT->ThreadId < 1000000 && 
+                                (pT->ThreadContext.DataSize == sizeof(CONTEXT) || pT->ThreadContext.DataSize == 1232 || pT->ThreadContext.DataSize == 716))
+                            {
+                                threadCount++;
+                                curr += sizeof(MINIDUMP_THREAD);
+                            }
+                            else
+                            {
+                                break;
+                            }
+                        }
+                    }
+
+                    if (threadCount > 0)
+                    {
+                        for (uint32_t t = 0; t < threadCount; ++t)
+                        {
+                            const uint64_t tOffset = offset + t * sizeof(MINIDUMP_THREAD);
+                            if (tOffset + sizeof(MINIDUMP_THREAD) > fileSize) break;
+                            const auto pT = reinterpret_cast<const MINIDUMP_THREAD*>(pBase + tOffset);
+                            pSession->Threads.push_back(*pT);
+
+                            if (pT->Stack.StartOfMemoryRange > 0 && pT->Stack.Memory.DataSize > 0)
+                            {
+                                DumpSessionInternal::DumpMemoryRange mr{};
+                                mr.StartAddress = pT->Stack.StartOfMemoryRange;
+                                mr.DataSize = pT->Stack.Memory.DataSize;
+                                mr.Rva = pT->Stack.Memory.Rva;
+                                pSession->MemoryRanges.push_back(mr);
+                            }
+                        }
+                        recoveredAnything = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 4. 启发式恢复 ModuleListStream
+        if (pSession->Modules.empty())
+        {
+            const uint64_t scanLimit = (fileSize > sizeof(MINIDUMP_MODULE))
+                ? std::min<uint64_t>(fileSize - sizeof(MINIDUMP_MODULE), 16 * 1024 * 1024)
+                : 0;
+            for (uint64_t offset = 0x200; offset < scanLimit; offset += 4)
+            {
+                const uint32_t candidateCount = *reinterpret_cast<const uint32_t*>(pBase + offset);
+                if (candidateCount >= 2 && candidateCount <= 1000)
+                {
+                    const uint64_t modArrayStart = offset + 4;
+                    if (modArrayStart + sizeof(MINIDUMP_MODULE) <= fileSize)
+                    {
+                        const auto pMod0 = reinterpret_cast<const MINIDUMP_MODULE*>(pBase + modArrayStart);
+                        if (pMod0->BaseOfImage >= 0x10000 && pMod0->SizeOfImage >= 0x1000 &&
+                            pMod0->ModuleNameRva > 0 && pMod0->ModuleNameRva + 4 < fileSize)
+                        {
+                            const uint32_t nameByteLen = *reinterpret_cast<const uint32_t*>(pBase + pMod0->ModuleNameRva);
+                            if (nameByteLen >= 4 && nameByteLen <= 512 && pMod0->ModuleNameRva + 4 + nameByteLen <= fileSize)
+                            {
+                                const wchar_t* pNameStr = reinterpret_cast<const wchar_t*>(pBase + pMod0->ModuleNameRva + 4);
+                                const size_t charLen = nameByteLen / sizeof(wchar_t);
+                                std::wstring strTest(pNameStr, charLen);
+                                if (strTest.find(L".dll") != std::wstring::npos || strTest.find(L".exe") != std::wstring::npos || strTest.find(L".") != std::wstring::npos)
+                                {
+                                    for (uint32_t m = 0; m < candidateCount; ++m)
+                                    {
+                                        const uint64_t modOffset = modArrayStart + m * sizeof(MINIDUMP_MODULE);
+                                        if (modOffset + sizeof(MINIDUMP_MODULE) > fileSize) break;
+                                        const auto pMod = reinterpret_cast<const MINIDUMP_MODULE*>(pBase + modOffset);
+                                        pSession->Modules.push_back(*pMod);
+
+                                        std::wstring modPath;
+                                        if (pMod->ModuleNameRva > 0 && pMod->ModuleNameRva + 4 < fileSize)
+                                        {
+                                            const uint32_t bLen = *reinterpret_cast<const uint32_t*>(pBase + pMod->ModuleNameRva);
+                                            if (bLen > 0 && pMod->ModuleNameRva + 4 + bLen <= fileSize)
+                                            {
+                                                const wchar_t* pStr = reinterpret_cast<const wchar_t*>(pBase + pMod->ModuleNameRva + 4);
+                                                modPath.assign(pStr, bLen / sizeof(wchar_t));
+                                            }
+                                        }
+                                        pSession->ModuleNames.push_back(modPath);
+
+                                        SymLoadModuleExW(
+                                            pSession->SymbolProcessHandle,
+                                            nullptr,
+                                            modPath.empty() ? nullptr : modPath.c_str(),
+                                            nullptr,
+                                            pMod->BaseOfImage,
+                                            pMod->SizeOfImage,
+                                            nullptr,
+                                            0);
+                                    }
+                                    recoveredAnything = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. 启发式恢复 64 位连续内存列表 (Memory64ListStream)
+        if (pSession->MemoryRanges.size() <= pSession->Threads.size())
+        {
+            const uint64_t scanLimit = (fileSize > sizeof(MINIDUMP_MEMORY64_LIST))
+                ? std::min<uint64_t>(fileSize - sizeof(MINIDUMP_MEMORY64_LIST), 16 * 1024 * 1024)
+                : 0;
+            for (uint64_t offset = 0x200; offset < scanLimit; offset += 8)
+            {
+                const auto pMemList = reinterpret_cast<const MINIDUMP_MEMORY64_LIST*>(pBase + offset);
+                if (pMemList->NumberOfMemoryRanges >= 5 && pMemList->NumberOfMemoryRanges <= 50000 &&
+                    pMemList->BaseRva > offset && pMemList->BaseRva < fileSize)
+                {
+                    const uint64_t descArrayStart = offset + sizeof(MINIDUMP_MEMORY64_LIST);
+                    const uint64_t neededDescSize = pMemList->NumberOfMemoryRanges * sizeof(MINIDUMP_MEMORY_DESCRIPTOR64);
+                    if (descArrayStart + neededDescSize <= fileSize)
+                    {
+                        uint64_t runningRva = pMemList->BaseRva;
+                        for (ULONG64 k = 0; k < pMemList->NumberOfMemoryRanges; ++k)
+                        {
+                            const auto pDesc = reinterpret_cast<const MINIDUMP_MEMORY_DESCRIPTOR64*>(pBase + descArrayStart + k * sizeof(MINIDUMP_MEMORY_DESCRIPTOR64));
+                            DumpSessionInternal::DumpMemoryRange range{};
+                            range.StartAddress = pDesc->StartOfMemoryRange;
+                            range.DataSize = pDesc->DataSize;
+                            range.Rva = runningRva;
+                            pSession->MemoryRanges.push_back(range);
+                            runningRva += pDesc->DataSize;
+                        }
+                        recoveredAnything = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (recoveredAnything)
+        {
+            pSession->IsHeuristicallyRecovered = true;
+        }
+    }
     int32_t InnerOpenDumpSession(const wchar_t* dumpFilePath, const wchar_t* symbolPath, void** outSession)
     {
         if (dumpFilePath == nullptr || outSession == nullptr)
@@ -562,6 +802,12 @@ extern "C"
                 session->MemoryRanges.push_back({ mr.StartOfMemoryRange, mr.DataSize, curRva });
                 curRva += mr.DataSize;
             }
+        }
+
+        // 7. 启发式容错诊断: 若关键流(异常、模块或线程)未能通过标准流目录获取，启动物理特征流自愈引擎
+        if (!session->HasException || session->Modules.empty() || session->Threads.empty())
+        {
+            TryHeuristicRecoverDump(session.get());
         }
 
         *outSession = session.release();
@@ -998,6 +1244,17 @@ extern "C"
     }
 
     // 对运行中进程捕获热快照 Dump
+    DIAG_API int32_t IsDumpHeuristicallyRecovered(void* session, int32_t* outIsRecovered)
+    {
+        if (session == nullptr || outIsRecovered == nullptr)
+        {
+            return ERROR_INVALID_PARAMETER;
+        }
+        auto pSession = static_cast<DumpSessionInternal*>(session);
+        *outIsRecovered = pSession->IsHeuristicallyRecovered ? 1 : 0;
+        return ERROR_SUCCESS;
+    }
+
     int32_t InnerCaptureProcessLiveDump(uint32_t processId, const wchar_t* dumpFilePath, int32_t dumpType)
     {
         if (dumpFilePath == nullptr)

@@ -49,6 +49,11 @@ namespace DiagnosticStudio.Core.Models
         public List<DiagnosticFinding> Findings { get; set; } = new List<DiagnosticFinding>();
 
         /// <summary>
+        /// 是否通过启发式引擎成功进行了容错修复（流目录未回写或损坏）
+        /// </summary>
+        public bool IsRecovered { get; set; }
+
+        /// <summary>
         /// 格式化文件大小
         /// </summary>
         public string FileSizeDisplay => FileSizeBytes >= 1024L * 1024 * 1024

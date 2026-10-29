@@ -1,5 +1,28 @@
 # Diagnostic Studio 版本变更记录 (CHANGENOTE)
 
+## [1.2.7] - 2026-10-29
+
+### 截断与未闭合 Dump 启发式物理流特征自愈恢复机制 (Heuristic Dump Recovery & Fault-Tolerant Engine)
+
+#### 1. 根治生产环境截断转储“0异常/0模块/0线程”解析丢失问题
+- **问题背景**：
+  - 在工业现场或高负载服务场景下，转储大文件（Full Dump）落盘耗时较长，外部守护进程或看门狗超时强杀（TerminateProcess）、系统关机或断电常导致 MiniDump 写入底层流数据后，**未能完成流目录索引表（Stream Directory）的回写**；
+  - 此时转储文件头部预留的流目录表（0x20 起始）全为 0 占位符，微软原生 API `MiniDumpReadDumpStream` 判定为 `UnusedStream (0)` 直接返回 `ERROR_NOT_FOUND (1168)`，造成常规调试器误判转储损坏并丢失全部异常记录、模块与线程信息。
+- **启发式特征自愈与流重组引擎 (TryHeuristicRecoverDump)**：
+  - 在 `DiagnosticNative.cpp` 中研发物理特征扫描自愈算法，当流目录解析缺失时自动触发：
+  - **SystemInfo 启发式重建**：扫描标准候选偏移，通过处理器架构（x64/x86/ARM64）、平台类型及主副版本号特征自愈恢复操作系统与环境信息；
+  - **ExceptionStream 异常流自愈**：扫描内存特征，识别常见致命崩溃码（如 0xC0000005 访问违例、0xC0000374 堆损坏、0xC00000FD 栈溢出、0xC0000409 FastFail 等），提取崩溃线程 ID、指令地址与上下文异常记录；
+  - **ThreadListStream 线程流自愈**：校验 x64/x86 标准上下文（CONTEXT）尺寸及调用栈合法性，遍历还原所有存活线程并自动注册到内存映射；
+  - **ModuleListStream 模块流重组**：定位加载模块特征与 Unicode 模块路径，恢复模块基址并挂载符号引擎（`SymLoadModuleExW`）；
+  - **Memory64ListStream 内存段恢复**：恢复 64 位连续内存段，确保调用栈展开与内存寻址能力。
+
+#### 2. 上层容错感知与规则引擎提示 (CorruptedDumpRecoveryRule)
+- **底层与上层通信打通**：`DiagnosticNative.dll` 导出 `IsDumpHeuristicallyRecovered` 接口，C# `DumpAnalyzerService` 自动感知并标记 `report.IsRecovered = true`；
+- **智能诊断规则命中**：新增 `CorruptedDumpRecoveryRule` 并注册到 `DefaultRuleEngine`：
+  - 标记 `Warning` 级别预警：“转储文件索引未闭合（已通过启发式引擎自动修复解析）”；
+  - 详细分析故障产生原因，并给出看门狗超时强杀限制调整与 MiniDump 参数优化的工业现场实操建议。
+
+
 ## [1.2.6] - 2026-09-24
 
 ### 剥离测试工程、测试代码及 Dump 转储大文件，优化 Git 提交历史，解除 GitHub 推送大小限制 (Push Optimization & Test Stripping)

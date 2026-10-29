@@ -180,10 +180,17 @@ namespace DiagnosticStudio.Dump.Services
                         }
                     }
 
-                    // 5. 智能可疑代码分析与标记（自动标红/标黄）
+                    // 5. 检查转储会话是否通过启发式引擎进行了容错修复与重建
+                    if (NativeMethods.IsDumpHeuristicallyRecovered(session, out int isRecovered) == 0 && isRecovered != 0)
+                    {
+                        report.IsRecovered = true;
+                        _logger.Warning("DumpAnalyzer", "转储文件由于流目录未收尾(全0)被检测为截断损坏，已成功通过启发式物理特征引擎自愈重建！");
+                    }
+
+                    // 6. 智能可疑代码分析与标记（自动标红/标黄）
                     _codeLocator.MarkSuspectFrames(report.Threads, report.Exception?.ThreadId);
 
-                    // 6. 执行多维规则引擎
+                    // 7. 执行多维规则引擎
                     report.Findings = _ruleEngine.Analyze(report);
 
                     _logger.Info("DumpAnalyzer", $"解析完成，共提取 {report.Modules.Count} 模块，{report.Threads.Count} 线程，推导产生 {report.Findings.Count} 处诊断项。");

@@ -1,4 +1,4 @@
-# Diagnostic Studio —— Windows 程序诊断与可视化调试平台
+﻿# Diagnostic Studio —— Windows 程序诊断与可视化调试平台
 
 > 面向 Windows C#/C++ 工业上位机及长期运行程序的 **Dump 智能分析、源码定位标红标黄、运行期进程监控、内存与资源泄漏分析、双 Dump 差分对比与故障根因辅助诊断平台**。
 
@@ -113,6 +113,13 @@ Diagnostic Studio 采用现代分层与依赖倒置架构（DIP），**底层能
 
 ### 8. 专业诊断报告导出
 * 支持一键导出暗黑科技风格的独立自包含 **HTML 报告** 与 **JSON 报告**，包含风险大卡片、异常摘要、证据链与崩溃调用栈表格。
+
+### 9. 截断与未闭合 Dump 启发式物理流特征自愈恢复机制 (Heuristic Dump Recovery)
+* **应对生产环境未收尾 Dump 难题**：在工业现场或服务器环境中，当程序崩溃触发 Full Dump 写入时，守护进程/看门狗超时强杀（TerminateProcess）常导致 MiniDump 头部的流目录索引表未能完成回写（全 0 占位符），造成市面上常规调试工具无法识别任何流；
+* **底层物理指纹扫描与自愈还原**：
+  * **SystemInfo / ExceptionStream 自愈**：自动扫描定位底层 MINIDUMP_SYSTEM_INFO 与 MINIDUMP_EXCEPTION_STREAM，提取真实崩溃码（如  xC0000005、 xC0000374）、故障线程 ID、崩溃指令地址与操作数；
+  * **ThreadList / ModuleList 智能重组**：基于上下文特征还原所有线程结构与模块加载列表，并挂载符号引擎；
+  * **智能推导诊断预警**：触发 CorruptedDumpRecoveryRule，在 UI 呈现故障分析结果的同时提示用户检查 Dump 截断来源（如看门狗超时设置）。
 
 ---
 

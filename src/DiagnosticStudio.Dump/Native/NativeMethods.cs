@@ -203,6 +203,9 @@ namespace DiagnosticStudio.Dump.Native
         public static extern unsafe int ResolveAddressSymbol(IntPtr session, ulong address, NativeSymbolResult* outSymbol);
 
         [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int IsDumpHeuristicallyRecovered(IntPtr session, out int outIsRecovered);
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int CaptureProcessLiveDump(uint processId, [MarshalAs(UnmanagedType.LPWStr)] string dumpFilePath, int dumpType);
     }
 }
