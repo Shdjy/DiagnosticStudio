@@ -4,13 +4,19 @@ namespace DiagnosticStudio.Core.Models
 {
     /// <summary>
     /// 进程实时运行期关键指标快照
+    /// 具备采样耗时度量、质量状态跟踪与 PID 复用实例防混淆能力
     /// </summary>
     public sealed class MemoryMetrics
     {
         /// <summary>
-        /// 采样时间戳
+        /// 采样高精度时间戳
         /// </summary>
         public DateTime Timestamp { get; set; } = DateTime.Now;
+
+        /// <summary>
+        /// 进程实例全局唯一标识（进程启动时间 + PID 复合标识，防止 PID 复用产生脏数据）
+        /// </summary>
+        public string ProcessInstanceId { get; set; } = string.Empty;
 
         /// <summary>
         /// 物理工作集内存 (Working Set) 字节数
@@ -46,6 +52,21 @@ namespace DiagnosticStudio.Core.Models
         /// CPU 占用百分比 (0.0 ~ 100.0)
         /// </summary>
         public double CpuPercentage { get; set; }
+
+        /// <summary>
+        /// 本次采样耗时（毫秒）
+        /// </summary>
+        public double SampleDurationMs { get; set; }
+
+        /// <summary>
+        /// 采样是否成功完成
+        /// </summary>
+        public bool IsSampleSuccessful { get; set; } = true;
+
+        /// <summary>
+        /// 若采样失败或降级时的错误详情
+        /// </summary>
+        public string? SampleErrorMessage { get; set; }
 
         /// <summary>
         /// 格式化私有内存显示 (MB/GB)

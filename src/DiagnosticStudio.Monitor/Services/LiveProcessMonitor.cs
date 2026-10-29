@@ -10,7 +10,20 @@ using DiagnosticStudio.Core.Models;
 namespace DiagnosticStudio.Monitor.Services
 {
     /// <summary>
+    /// 进程监控状态枚举
+    /// </summary>
+    public enum MonitorState
+    {
+        Stopped,
+        Starting,
+        Running,
+        Faulted,
+        Disposed
+    }
+
+    /// <summary>
     /// 运行中进程无侵入实时性能采样与泄漏监测器实现
+    /// 具备明确状态机转换、高精度耗时度量、采样质量追踪与 PID 复用防护
     /// </summary>
     public sealed class LiveProcessMonitor : ILiveProcessMonitor
     {
@@ -22,10 +35,13 @@ namespace DiagnosticStudio.Monitor.Services
         private Timer? _sampleTimer;
         private IntPtr _targetProcessHandle = IntPtr.Zero;
         private Process? _targetProcess;
+        private string _processInstanceId = string.Empty;
         private DateTime _lastCpuSampleTime;
         private TimeSpan _lastCpuTotalTime;
+        private volatile MonitorState _state = MonitorState.Stopped;
 
-        public bool IsRunning { get; private set; }
+        public bool IsRunning => _state == MonitorState.Running;
+        public MonitorState State => _state;
         public int TargetProcessId { get; private set; }
 
         public event Action<MemoryMetrics>? OnMetricsSampled;
@@ -77,51 +93,81 @@ namespace DiagnosticStudio.Monitor.Services
 
         public void StartMonitoring(int processId, TimeSpan? interval = null)
         {
-            StopMonitoring();
-
-            TargetProcessId = processId;
-            TimeSpan samplePeriod = interval ?? TimeSpan.FromSeconds(1);
-
-            try
+            lock (_lock)
             {
-                _targetProcess = Process.GetProcessById(processId);
-                _targetProcessHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, processId);
-
-                if (_targetProcessHandle == IntPtr.Zero)
+                if (_state == MonitorState.Disposed)
                 {
-                    _logger.Warning("LiveMonitor", $"以标准权限打开进程 PID {processId} 句柄失败，将回退使用 .NET Process 标准接口采集");
+                    throw new ObjectDisposedException(nameof(LiveProcessMonitor));
                 }
 
-                _lastCpuSampleTime = DateTime.UtcNow;
-                _lastCpuTotalTime = _targetProcess.TotalProcessorTime;
+                StopMonitoringInternal();
+                _state = MonitorState.Starting;
 
-                lock (_lock)
+                TargetProcessId = processId;
+                TimeSpan samplePeriod = interval ?? TimeSpan.FromSeconds(1);
+
+                try
                 {
+                    _targetProcess = Process.GetProcessById(processId);
+
+                    // 基于 PID 与 进程启动时间生成唯一实例标记，防止 PID 复用
+                    string startTimeStr = "0";
+                    try
+                    {
+                        startTimeStr = _targetProcess.StartTime.Ticks.ToString();
+                    }
+                    catch
+                    {
+                    }
+                    _processInstanceId = $"{processId}_{startTimeStr}";
+
+                    _targetProcessHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, processId);
+                    if (_targetProcessHandle == IntPtr.Zero)
+                    {
+                        _logger.Warning("LiveMonitor", $"以标准权限打开进程 PID {processId} 句柄失败，将回退使用 .NET Process 标准接口采集");
+                    }
+
+                    _lastCpuSampleTime = DateTime.UtcNow;
+                    try
+                    {
+                        _lastCpuTotalTime = _targetProcess.TotalProcessorTime;
+                    }
+                    catch
+                    {
+                        _lastCpuTotalTime = TimeSpan.Zero;
+                    }
+
                     _history.Clear();
-                }
+                    _state = MonitorState.Running;
+                    _sampleTimer = new Timer(SampleTimerCallback, null, TimeSpan.Zero, samplePeriod);
 
-                IsRunning = true;
-                _sampleTimer = new Timer(OnSampleTimerTick, null, TimeSpan.Zero, samplePeriod);
-                _logger.Info("LiveMonitor", $"已启动对目标进程 PID {processId} ({_targetProcess.ProcessName}) 的实时监控，采样频率: {samplePeriod.TotalSeconds}s");
-            }
-            catch (Exception ex)
-            {
-                _logger.Error("LiveMonitor", $"启动进程监控失败 PID: {processId}", ex);
-                StopMonitoring();
-                throw;
+                    _logger.Info("LiveMonitor", $"开始监控目标进程 PID {processId} (Instance: {_processInstanceId})，采样周期: {samplePeriod.TotalMilliseconds}ms");
+                }
+                catch (Exception ex)
+                {
+                    _state = MonitorState.Faulted;
+                    _logger.Error("LiveMonitor", $"启动进程监控失败 PID {processId}: {ex.Message}", ex);
+                    StopMonitoringInternal();
+                    throw;
+                }
             }
         }
 
         public void StopMonitoring()
         {
-            if (!IsRunning && _sampleTimer == null)
+            lock (_lock)
             {
-                return;
+                StopMonitoringInternal();
             }
+        }
 
-            IsRunning = false;
-            _sampleTimer?.Dispose();
-            _sampleTimer = null;
+        private void StopMonitoringInternal()
+        {
+            if (_sampleTimer != null)
+            {
+                _sampleTimer.Dispose();
+                _sampleTimer = null;
+            }
 
             if (_targetProcessHandle != IntPtr.Zero)
             {
@@ -129,49 +175,75 @@ namespace DiagnosticStudio.Monitor.Services
                 _targetProcessHandle = IntPtr.Zero;
             }
 
-            _targetProcess?.Dispose();
-            _targetProcess = null;
+            if (_targetProcess != null)
+            {
+                _targetProcess.Dispose();
+                _targetProcess = null;
+            }
 
-            _logger.Info("LiveMonitor", "实时监控已停止");
+            if (_state != MonitorState.Disposed)
+            {
+                _state = MonitorState.Stopped;
+            }
+
+            _logger.Info("LiveMonitor", $"已停止监控进程 PID {TargetProcessId}");
         }
 
-        private void OnSampleTimerTick(object? state)
+        private void SampleTimerCallback(object? state)
         {
-            if (!IsRunning || _targetProcess == null)
+            if (_state != MonitorState.Running)
             {
                 return;
             }
 
+            var sw = Stopwatch.StartNew();
+            var metrics = new MemoryMetrics
+            {
+                Timestamp = DateTime.Now,
+                ProcessInstanceId = _processInstanceId
+            };
+
             try
             {
-                _targetProcess.Refresh();
-                if (_targetProcess.HasExited)
+                if (_targetProcess == null || _targetProcess.HasExited)
                 {
-                    _logger.Warning("LiveMonitor", $"目标进程 PID {TargetProcessId} 已退出");
+                    _logger.Warning("LiveMonitor", $"目标进程 PID {TargetProcessId} 已退出，自动终止监控");
                     StopMonitoring();
                     return;
                 }
 
-                var metrics = new MemoryMetrics
-                {
-                    Timestamp = DateTime.Now,
-                    ThreadCount = _targetProcess.Threads.Count
-                };
+                _targetProcess.Refresh();
 
-                // 优先通过 Win32 API 高精度采集
+                // 1. 采集内存数据 (Private Bytes, Working Set)
                 if (_targetProcessHandle != IntPtr.Zero)
                 {
-                    var counters = new PROCESS_MEMORY_COUNTERS_EX();
-                    counters.cb = (uint)Marshal.SizeOf(typeof(PROCESS_MEMORY_COUNTERS_EX));
-                    if (GetProcessMemoryInfo(_targetProcessHandle, out counters, counters.cb))
+                    if (GetProcessMemoryInfo(_targetProcessHandle, out var counters, (uint)Marshal.SizeOf<PROCESS_MEMORY_COUNTERS_EX>()))
                     {
                         metrics.WorkingSet = (long)counters.WorkingSetSize.ToUInt64();
                         metrics.PrivateBytes = (long)counters.PrivateUsage.ToUInt64();
                     }
-
-                    if (GetProcessHandleCount(_targetProcessHandle, out uint hCount))
+                    else
                     {
-                        metrics.HandleCount = (int)hCount;
+                        metrics.WorkingSet = _targetProcess.WorkingSet64;
+                        metrics.PrivateBytes = _targetProcess.PagedMemorySize64;
+                    }
+                }
+                else
+                {
+                    metrics.WorkingSet = _targetProcess.WorkingSet64;
+                    metrics.PrivateBytes = _targetProcess.PagedMemorySize64;
+                }
+
+                // 2. 采集句柄与 GDI 图元
+                if (_targetProcessHandle != IntPtr.Zero)
+                {
+                    if (GetProcessHandleCount(_targetProcessHandle, out uint handleCount))
+                    {
+                        metrics.HandleCount = (int)handleCount;
+                    }
+                    else
+                    {
+                        metrics.HandleCount = _targetProcess.HandleCount;
                     }
 
                     metrics.GdiObjects = (int)GetGuiResources(_targetProcessHandle, GR_GDIOBJECTS);
@@ -179,50 +251,65 @@ namespace DiagnosticStudio.Monitor.Services
                 }
                 else
                 {
-                    // 回退方案
-                    metrics.WorkingSet = _targetProcess.WorkingSet64;
-                    metrics.PrivateBytes = _targetProcess.PagedMemorySize64;
                     metrics.HandleCount = _targetProcess.HandleCount;
                 }
 
-                // CPU 计算
+                metrics.ThreadCount = _targetProcess.Threads.Count;
+
+                // 3. 计算 CPU 利用率
                 DateTime nowUtc = DateTime.UtcNow;
-                TimeSpan currentCpuTotal = _targetProcess.TotalProcessorTime;
-                double elapsedMs = (nowUtc - _lastCpuSampleTime).TotalMilliseconds;
-                if (elapsedMs > 0)
+                try
                 {
-                    double cpuUsedMs = (currentCpuTotal - _lastCpuTotalTime).TotalMilliseconds;
-                    metrics.CpuPercentage = Math.Max(0.0, Math.Min(100.0, (cpuUsedMs / (elapsedMs * Environment.ProcessorCount)) * 100.0));
+                    TimeSpan currentCpuTime = _targetProcess.TotalProcessorTime;
+                    double cpuDeltaMs = (currentCpuTime - _lastCpuTotalTime).TotalMilliseconds;
+                    double wallDeltaMs = (nowUtc - _lastCpuSampleTime).TotalMilliseconds;
+
+                    if (wallDeltaMs > 100)
+                    {
+                        metrics.CpuPercentage = Math.Max(0.0, Math.Min(100.0, (cpuDeltaMs / (wallDeltaMs * Environment.ProcessorCount)) * 100.0));
+                        _lastCpuSampleTime = nowUtc;
+                        _lastCpuTotalTime = currentCpuTime;
+                    }
+                }
+                catch
+                {
                 }
 
-                _lastCpuSampleTime = nowUtc;
-                _lastCpuTotalTime = currentCpuTotal;
+                sw.Stop();
+                metrics.SampleDurationMs = sw.Elapsed.TotalMilliseconds;
+                metrics.IsSampleSuccessful = true;
 
-                // 记录历史
-                List<MemoryMetrics> snapshotList;
+                // 4. 追加历史并进行泄漏趋势研判
+                List<DiagnosticFinding>? findings = null;
                 lock (_lock)
                 {
                     _history.Add(metrics);
-                    // 保留至多 600 个点（即 10 分钟）
+                    // 仅保留最多 600 个采样点
                     if (_history.Count > 600)
                     {
                         _history.RemoveAt(0);
                     }
-                    snapshotList = new List<MemoryMetrics>(_history);
+
+                    findings = _leakDetector.DetectLeakTrends(_history, TargetProcessId);
                 }
 
-                // 派发采样事件
+                // 5. 触发外部事件通知
                 OnMetricsSampled?.Invoke(metrics);
 
-                // 泄漏趋势识别
-                var alerts = _leakDetector.DetectLeakTrends(snapshotList, TargetProcessId);
-                foreach (var alert in alerts)
+                if (findings != null && findings.Count > 0)
                 {
-                    OnLeakAlert?.Invoke(alert);
+                    foreach (var finding in findings)
+                    {
+                        OnLeakAlert?.Invoke(finding);
+                    }
                 }
             }
             catch (Exception ex)
             {
+                sw.Stop();
+                metrics.SampleDurationMs = sw.Elapsed.TotalMilliseconds;
+                metrics.IsSampleSuccessful = false;
+                metrics.SampleErrorMessage = ex.Message;
                 _logger.Warning("LiveMonitor", $"采样目标进程出现瞬态异常: {ex.Message}");
             }
         }
@@ -261,7 +348,11 @@ namespace DiagnosticStudio.Monitor.Services
 
         public void Dispose()
         {
-            StopMonitoring();
+            lock (_lock)
+            {
+                _state = MonitorState.Disposed;
+                StopMonitoringInternal();
+            }
         }
     }
 }

@@ -36,6 +36,11 @@ namespace DiagnosticStudio.Core.Models
         public bool IsSymbolLoaded { get; set; }
 
         /// <summary>
+        /// 符号质量细分信息
+        /// </summary>
+        public SymbolQualityInfo SymbolQuality { get; set; } = new SymbolQualityInfo();
+
+        /// <summary>
         /// 格式化大小显示 (MB/KB)
         /// </summary>
         public string SizeDisplay => SizeOfImage >= 1024 * 1024

@@ -4,29 +4,29 @@ using DiagnosticStudio.Core.Models;
 namespace DiagnosticStudio.Dump.Services
 {
     /// <summary>
-    /// 可疑代码行识别与分级标记定位器接口
+    /// 可疑代码智能定位与风险标记器接口
+    /// 遵循归因角色分层原则，区分异常爆发点、业务触发点与根因候选点
     /// </summary>
     public interface ISuspectCodeLocator
     {
         /// <summary>
-        /// 判定指定模块名称是否属于用户自身编写的业务代码模块
+        /// 判定指定模块是否属于用户业务代码（排除系统底层库与常用第三方运行时）
         /// </summary>
-        /// <param name="moduleName">模块名 (如 MyApp.dll)</param>
-        /// <returns>true 表示用户业务模块，false 表示系统或三方底层库</returns>
         bool IsUserModule(string moduleName);
 
         /// <summary>
-        /// 对整个 Dump 中的所有线程调用栈进行智能标记与风险分级赋色
+        /// 对线程集合进行智能风险标记与层级高亮染色
         /// </summary>
-        /// <param name="threads">线程列表</param>
-        /// <param name="crashThreadId">崩溃线程 ID</param>
         void MarkSuspectFrames(List<ThreadInfo> threads, uint? crashThreadId);
 
         /// <summary>
-        /// 从崩溃线程调用栈中查找引发崩溃的最底层用户业务责任代码帧 (Blamed User Frame)
+        /// 在崩溃调用栈中寻找最外层的用户责任代码栈帧（向后兼容）
         /// </summary>
-        /// <param name="crashThread">崩溃线程信息</param>
-        /// <returns>用户责任代码帧，若无则返回 null</returns>
         StackFrameInfo? FindBlamedUserFrame(ThreadInfo? crashThread);
+
+        /// <summary>
+        /// 深度构建故障调用链条（异常指令点 -> 业务直接触发点 -> 可疑破坏点 -> 根因候选）
+        /// </summary>
+        CodeLocationChain BuildLocationChain(ThreadInfo? crashThread, ExceptionInfo? exception);
     }
 }

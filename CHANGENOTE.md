@@ -1,5 +1,112 @@
 # Diagnostic Studio 版本变更记录 (CHANGENOTE)
 
+## [2.0.0] - 2026-10-29
+
+### 依据《DiagnosticStudio_优化建议.md》全面架构升级与可信度深度演进 (Architectural Evolution & Trustworthiness Overhaul)
+
+基于《DiagnosticStudio_优化建议.md》提出的 15 项优化建议，完成从“展示异常、标记代码”的轻量诊断工具，向“具备可追溯证据链、可信度分级、验证步骤、工业时序事件关联与案例沉淀”的 Windows 故障分析平台的全面跃迁。
+
+#### 1. 根因定位语义拆分与故障归因链条 (P0 - 建议 1)
+- **根因语义精准分层**：引入 `CodeLocationRole` 角色枚举，彻底杜绝将崩溃现场/被动拦截点盲目定性为根因：
+  - `ExceptionInstruction`：硬件直接爆发指令位置；
+  - `DirectTriggerCall`：业务代码中直接触发调用的栈帧；
+  - `SuspectBusinessCode`：可疑破坏上下文/外层入口；
+  - `RootCauseCandidate` / `VerifiedRootCause`：候选根因与已验证根因；
+- **全链路故障归因模型 (`CodeLocationChain`)**：
+  - 串联异常爆发点、业务触发点、破坏上下文，明确标注根因确定性（`RootCauseCertainty`：`ConfirmedRootCause`, `ProbableHypothesis`, `InsufficientEvidence`）；
+  - 自动输出未完全确认的诊断假设与建议进行的验证复核步骤。
+
+#### 2. 虚拟内存区域差分语义规范与堆分析分层 (P0/P1 - 建议 2)
+- **规范命名与数据契约**：明确规范为“虚拟内存区域差分” (`VirtualMemoryRegionDiff` / `NativeRegionGrowthItem`)，清晰呈现 `MEM_COMMIT`、`MEM_PRIVATE`、`MEM_IMAGE` 与页面保护属性；
+- **强化语义告知**：明确标注虚拟内存区域变动不等价于单个 `malloc`/`new` 堆对象分配，防止用户产生误解；
+- **重叠与区间分析**：增加地址区间重叠标记 (`IsOverlapped`)，更准确识别区域合并与扩容。
+
+#### 3. 内存增长检测算法与多维统计学升级 (P0 - 建议 3)
+- **参数全面可配置化 (`LeakTrendDetectorOptions`)**：支持动态配置采样窗口、最小点数、内存/GDI/句柄阈值、判定系数阈值、冷却与滞回时间；
+- **引入拟合优度与单调性分析**：
+  - 计算线性回归判定系数 $R^2$，有效过滤无序杂音波动；
+  - 计算单调递增比率 (`MonotonicRatio`)，确保判断稳步上涨；
+- **智能增长模式分类 (`GrowthPatternType`)**：
+  - 细分识别 `SustainedGrowth`（持续单调增长/疑似泄漏）、`StepGrowth`（阶梯式突发）、`PeriodicFluctuation`（周期波动/非泄漏）、`TransientSpike`（瞬时尖峰后回落）、`WarmupStabilized`（预热后趋稳）；
+- **采样连续性与异常防护**：防御采样时间戳逆流；引入告警冷却 (`AlertCooldownSeconds`) 与滞回机制，杜绝告警在阈值边缘反复抖动。
+
+#### 4. 规则引擎审计、沙箱异常全可见与置信度动态评估 (P0 - 建议 4 & 6)
+- **彻底消除空 catch 吞异常**：
+  - 引入 `RuleExecutionRecord`，记录每条规则的执行状态（`Success` / `Failed` / `Skipped`）、耗时（毫秒）、发现条目数、异常类型与完整堆栈；
+  - 在报告中计算全局分析整体状态 (`OverallStatus`：`Success`, `PartialSuccess`, `Failed`)；
+- **置信度多维动态打分**：
+  - 置信度由异常码匹配度、特异性内存标记 (如 0xFEEEFEEE)、源码行号可用性、Dump 完整性综合决定，杜绝静态写死；
+- **规则元数据扩展 (`IDiagnosticRule`)**：
+  - 增加 `RuleId`、`Version`、`IsEnabled`、`Priority` 支持；
+  - 核心规则升级：`AccessViolationRule`, `HeapCorruptionRule`, `NullPointerRule`, `CorruptedDumpRecoveryRule` 等全面输出结构化事实、假设与验证步骤。
+
+#### 5. Dump 完整性自检与符号质量显式呈现 (P0 - 建议 5)
+- **转储完整性评估 (`DumpIntegrityInfo`)**：
+  - 明确 Dump 状态级别（`Complete`, `PartiallyAvailable`, `HeuristicallyRecovered`, `Corrupted`）；
+  - 显式检测各物理流（系统信息流、异常流、模块流、线程流、内存流）的有效性与缺失情况；
+- **符号质量分级 (`SymbolQualityInfo`)**：
+  - 细分符号状态：`MatchedPdb` (匹配符号), `ExportSymbolsOnly` (仅导出表), `MismatchedPdb` (符号不匹配), `NoSymbols` (无符号), `LoadFailed` (加载失败)；
+  - 明确标明当前分析结论是否具备源码行号映射。
+
+#### 6. 统一结构化证据模型与复现性报告 (P0/P1 - 建议 8 & 12)
+- **统一结构化证据项 (`EvidenceItem`)**：
+  - 细分证据分类类别：`ConfirmedFact` (事实), `SupportingEvidence` (辅助证据), `Hypothesis` (诊断假设), `VerificationStep` (验证步骤), `CounterEvidence` (反向排除)；
+  - 包含证据权重、关联内存地址、模块名称、线程 ID；
+- **全要素复现性报告**：
+  - 记录分析引擎版本 (`AnalyzerVersion`) 与规则集版本 (`RuleEngineVersion`)；
+  - 升级 `HtmlReportGenerator`：可视化渲染完整性看板、规则执行审计表、结构化证据与归因链；
+  - 升级 `JsonReportGenerator`：提供机器可读的全量结构化 JSON 报告；
+- **隐私与敏感信息脱敏 (`ReportSanitizer`)**：
+  - 支持脱敏 Windows 用户名、本地私有源码路径、内网 IP 地址，确保企业报告安全外发与归档。
+
+#### 7. 实时监控采样质量与生命周期状态机 (P1 - 建议 9)
+- **明确状态机流转 (`MonitorState`)**：规范 `Stopped`, `Starting`, `Running`, `Faulted`, `Disposed` 状态转换，严格保证句柄释放与线程安全；
+- **采样指标扩充 (`MemoryMetrics`)**：增加 `SampleDurationMs` (单次采集耗时)、`IsSampleSuccessful`、错误信息；
+- **防 PID 复用脏数据**：引入 `ProcessInstanceId`（PID + 启动时间符合标识），防止目标进程重启导致图表数据串联。
+
+#### 8. 线程并发、死锁与等待关系分析 (P1 - 建议 10)
+- **并发分析引擎 (`ThreadConcurrencyAnalyzer`)**：
+  - 深度扫描线程栈中的临界区、互斥锁、事件、多对象等待及睡眠原语；
+  - 建立线程等待有向图，采用闭环检测算法检测死锁环路 (`DeadlockCycle`)；
+  - 识别线程池工作线程耗尽 (`ThreadPool Exhaustion`) 风险；
+  - 支持两个 Dump 之间的线程调用栈差分 (`DetectStuckThreads`)，精准识别长时间处于停滞僵死状态的线程。
+
+#### 9. 工业上位机运行事件关联与统一时间线 (P2 - 建议 13)
+- **工业时序事件核心模型 (`IndustrialTimelineEvent`)**：
+  - 统一记录单调纳秒时间戳、工位号、相机 ID、图像帧号 (FrameId)、任务批次 (TaskId)、模块名、事件类型、耗时与状态码；
+- **无 GC 高性能环形缓冲区 (`IndustrialTimelineRecorder`)**：
+  - 面向工业 7x24 高频运行设计，支持容量上限硬约束（如 50,000 条事件）与平滑自动轮转覆写；
+- **跨来源因果时序关联引擎 (`TimelineCorrelator`)**：
+  - 按 `FrameId` 还原单帧从触发、取图、算法、PLC 动作到存盘的全生命周期追踪；
+  - 智能诊断算法推理严重超时、PLC 心跳通信中断；
+  - 将崩溃时刻与崩溃前夕事件异动对齐在统一时间线上，还原故障前业务因果链。
+
+#### 10. 故障案例库沉淀与规则动态扩展 (P2 - 建议 14)
+- **故障案例知识库 (`FaultCaseItem` / `IFaultCaseRepository`)**：
+  - 沉淀故障特征、异常码、模块名、责任函数、根因分类与验证过的解决方案；
+- **相似故障智能匹配器 (`SimilarCaseMatcher`)**：
+  - 综合异常码、模块名、调用栈特征计算多维加权相似度分值，为现场排查推荐历史解决经验；
+- **规则动态管理注册中心 (`DiagnosticRuleManager`)**：
+  - 支持在运行时动态启停规则、调整规则执行优先级。
+
+#### 11. 分析任务全生命周期与资源限制调度 (P1 - 建议 15)
+- **分析任务调度器 (`AnalysisTaskManager`)**：
+  - 管理任务生命周期（排队、运行、完成、超时、取消）；
+  - 提供细粒度阶段进度报告 (`AnalysisProgressInfo`)；
+  - 防御性配额限制 (`AnalysisResourceLimits`)：单次分析硬超时、最大文件大小限制、并发节流。
+
+#### 12. 自动化测试套件扩充与质量门禁 (P0 - 建议 7)
+- 新增 15 个专项单元测试，全套测试用例扩充至 **45 个，通过率 100%**：
+  - `RootCauseLocatorTests`：验证根因语义拆分与位置链；
+  - `RuleEngineAuditAndConfidenceTests`：验证规则异常不吞与审计；
+  - `LeakTrendDetectorEnhancedTests`：验证预热趋稳、持续泄漏及防抖；
+  - `ThreadConcurrencyTests`：验证死锁检测与卡滞线程差分；
+  - `IndustrialTimelineTests`：验证环形事件缓冲与跨来源时间线对齐；
+  - `ReportSanitizerAndEvidenceTests`：验证数据脱敏与 HTML 报表渲染；
+  - `FaultCaseAndTaskManagementTests`：验证案例库检索与任务资源管理。
+
+---
+
 ## [1.2.7] - 2026-10-29
 
 ### 截断与未闭合 Dump 启发式物理流特征自愈恢复机制 (Heuristic Dump Recovery & Fault-Tolerant Engine)

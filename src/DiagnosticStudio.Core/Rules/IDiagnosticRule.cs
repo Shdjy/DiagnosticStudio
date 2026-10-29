@@ -5,6 +5,7 @@ namespace DiagnosticStudio.Core.Rules
 {
     /// <summary>
     /// 诊断规则接口
+    /// 支持规则元数据、版本管理、优先级与动态启停
     /// </summary>
     public interface IDiagnosticRule
     {
@@ -17,6 +18,26 @@ namespace DiagnosticStudio.Core.Rules
         /// 规则描述
         /// </summary>
         string Description { get; }
+
+        /// <summary>
+        /// 规则标识符
+        /// </summary>
+        string RuleId => RuleName;
+
+        /// <summary>
+        /// 规则版本号
+        /// </summary>
+        string Version => "1.0.0";
+
+        /// <summary>
+        /// 规则是否处于启用状态
+        /// </summary>
+        bool IsEnabled => true;
+
+        /// <summary>
+        /// 规则执行优先级（数值越小越先执行）
+        /// </summary>
+        int Priority => 100;
 
         /// <summary>
         /// 对 Dump 报告执行诊断规则分析

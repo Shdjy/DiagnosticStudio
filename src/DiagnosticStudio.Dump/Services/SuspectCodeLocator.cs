@@ -8,6 +8,7 @@ namespace DiagnosticStudio.Dump.Services
 {
     /// <summary>
     /// 可疑代码智能定位与风险标记器实现
+    /// 严格遵循多角色定位分层规范，避免将故障发现现场直接武断误报为根因
     /// </summary>
     public sealed class SuspectCodeLocator : ISuspectCodeLocator
     {
@@ -95,6 +96,61 @@ namespace DiagnosticStudio.Dump.Services
             return crashThread.Frames.FirstOrDefault(f => f.IsUserCode);
         }
 
+        public CodeLocationChain BuildLocationChain(ThreadInfo? crashThread, ExceptionInfo? exception)
+        {
+            var chain = new CodeLocationChain();
+            if (crashThread?.Frames == null || crashThread.Frames.Count == 0)
+            {
+                chain.Certainty = RootCauseCertainty.InsufficientEvidence;
+                chain.UnconfirmedAssumptions.Add("目标转储中无有效线程栈帧数据，证据不足。");
+                return chain;
+            }
+
+            // 1. 异常直接爆发点 (Frame 0)
+            chain.ExceptionPoint = crashThread.Frames[0];
+
+            // 2. 查找业务直接触发点 (第一层用户代码栈帧)
+            var userFrames = crashThread.Frames.Where(f => f.IsUserCode).ToList();
+            if (userFrames.Count > 0)
+            {
+                chain.DirectTriggerPoint = userFrames[0];
+
+                if (userFrames.Count > 1)
+                {
+                    // 第二层用户代码作为可疑业务入口/破坏上下文
+                    chain.SuspectBusinessPoint = userFrames[1];
+                }
+
+                // 若顶帧直接为用户代码，其自身即为候选根因
+                if (chain.ExceptionPoint.IsUserCode)
+                {
+                    chain.RootCauseCandidatePoint = chain.ExceptionPoint;
+                    chain.Certainty = !string.IsNullOrEmpty(chain.ExceptionPoint.SourceFile)
+                        ? RootCauseCertainty.ConfirmedRootCause
+                        : RootCauseCertainty.ProbableHypothesis;
+                }
+                else
+                {
+                    // 顶帧为系统库，直接触发点作为候选根因
+                    chain.RootCauseCandidatePoint = chain.DirectTriggerPoint;
+                    chain.Certainty = RootCauseCertainty.ProbableHypothesis;
+                }
+            }
+            else
+            {
+                // 无用户栈帧（可能为纯第三方库内部故障或符号缺失）
+                chain.RootCauseCandidatePoint = chain.ExceptionPoint;
+                chain.Certainty = RootCauseCertainty.InsufficientEvidence;
+                chain.UnconfirmedAssumptions.Add("整个调用栈未能解析出任何用户业务代码，可能缺少私有 PDB 符号或属于第三方组件自身故障。");
+            }
+
+            // 补充通用验证步骤
+            chain.VerificationSteps.Add("比对发生异常时的入参参数与全局状态是否处于有效范围。");
+            chain.VerificationSteps.Add("在本地 IDE 附加调试器并在直接触发点下断点，单步复现前置调用参数传递。");
+
+            return chain;
+        }
+
         public void MarkSuspectFrames(List<ThreadInfo> threads, uint? crashThreadId)
         {
             if (threads == null || threads.Count == 0)
@@ -126,7 +182,7 @@ namespace DiagnosticStudio.Dump.Services
 
                     if (topFrame.IsUserCode)
                     {
-                        // 场景 A：崩溃直接在用户业务代码中发生 (如在用户函数中解引用空指针)
+                        // 场景 A：崩溃直接在用户业务代码中发生 (如在用户函数中解引用空指针、除以零)
                         topFrame.HighlightLevel = DiagnosticLevel.Critical;
                         topFrame.IsRootCause = true;
 
